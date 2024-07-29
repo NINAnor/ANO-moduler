@@ -43,7 +43,7 @@ orditorp(ord, display = "sites")
 #### Real data
 
 ```{r myModel}
-mat <- dat |>
+mat2 <- dat |>
   column_to_rownames("hovedtype_NiN2_kode") |>
   mutate(
     distributionalRange = case_match(
@@ -61,19 +61,23 @@ mat <- dat |>
       .default = 0),
     successionalStage = case_match(
       successionalStage,
-      "no" ~ 1,
+      "yes" ~ 1,
       .default = 0),
     spatiallyDynamic = case_match(
       spatiallyDynamic,
-      "no" ~ 1,
+      "yes" ~ 1,
       .default = 0),
     arcticAlpine = case_match(
       arcticAlpine,
-      "no" ~ 1,
+      "yes" ~ 1,
       .default = 0),
     coastal = case_match(
       coastal,
-      "no" ~ 1,
+      "yes" ~ 1,
+      .default = 0),
+    marginal = case_match(
+      marginal,
+      "yes" ~ 1,
       .default = 0),
     flater = flater/max(flater)
     ) |>
@@ -84,8 +88,10 @@ mat <- dat |>
          successionalStage,
          spatiallyDynamic,
          arcticAlpine,
-         coastal)
-  
+         coastal,
+         marginal)
+mat <- mat2 |>
+  select(-marginal)
 myOrd <- metaMDS(mat, trace = FALSE)
 
 
@@ -111,4 +117,17 @@ ggord(pca1, obslab=T, labcol = "blue", veccol = "grey",
       exp = c(0.1, 0.1))
 
 ggsave("pca1.jpg")
+```
+
+Samme ordinering, bare uten de marginale typene (for å få mindre overlapp mellom punktene)
+
+```{r}
+pca2 <- stats::prcomp(mat2 |> filter(marginal != "1"))
+ggord(pca2, obslab=T, labcol = "blue", veccol = "grey",
+      vec_ext=1.2,
+      size=3,
+      txt=3,
+      exp = c(0.1, 0.1))
+
+ggsave("pca2_margnalRemoved.jpg")
 ```
