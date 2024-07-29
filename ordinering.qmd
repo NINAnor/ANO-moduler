@@ -1,0 +1,114 @@
+---
+title: "Ordinering av NiN hovedtyper"
+format: html
+editor: visual
+---
+
+## Bakgrunn
+
+Her ønsker jeg å gruppere NiN-hovedtyper etter noen variabler som er med på å avgjøre hvorden de evt kan overvåkes i et nasjonalt naturovervåkingsprogram. Datasettet hentes fra google sheets.
+
+```{r setup}
+library(tidyverse)
+library(googlesheets4)
+library(vegan)
+library(ggord)
+```
+
+```{r getData}
+gs4_user()
+
+dat <- googlesheets4::read_sheet("https://docs.google.com/spreadsheets/d/1_xtwyLeKByIObjxrZP2ApkwQB9_oGlLle3SwSFjL_cA/edit?gid=0#gid=0")
+```
+
+#### Test run
+
+```{r exampleData}
+data(dune)
+data(dune.env)
+```
+
+```{r exampleModel}
+ord <- metaMDS(dune, trace = FALSE)
+ord
+```
+
+```{r examplePlot}
+plot(ord, type = "n") |>
+#points("sites", cex = 0.8, pch=21, col="red", bg="yellow")
+text("species", cex=0.7, col="blue")
+orditorp(ord, display = "sites")
+```
+
+#### Real data
+
+```{r myModel}
+mat <- dat |>
+  column_to_rownames("hovedtype_NiN2_kode") |>
+  mutate(
+    distributionalRange = case_match(
+      distributionalRange,
+      "Broad" ~ 1,
+      .default = 0
+      ),
+    patchiness = case_match(
+      patchiness,
+      "Dispersed" ~ 1,
+      .default = 0),
+    localDensity = case_match(
+      localDensity,
+      "High" ~ 1,
+      .default = 0),
+    successionalStage = case_match(
+      successionalStage,
+      "no" ~ 1,
+      .default = 0),
+    spatiallyDynamic = case_match(
+      spatiallyDynamic,
+      "no" ~ 1,
+      .default = 0),
+    arcticAlpine = case_match(
+      arcticAlpine,
+      "no" ~ 1,
+      .default = 0),
+    coastal = case_match(
+      coastal,
+      "no" ~ 1,
+      .default = 0),
+    flater = flater/max(flater)
+    ) |>
+  select(flater, 
+         distributionalRange,
+         patchiness,
+         localDensity,
+         successionalStage,
+         spatiallyDynamic,
+         arcticAlpine,
+         coastal)
+  
+myOrd <- metaMDS(mat, trace = FALSE)
+
+
+```
+
+```{r}
+#| fig-width: 10
+#| fig-height: 10
+plot(myOrd, type = "n") |>
+#points("sites", cex = 0.8, pch=21, col="red", bg="yellow") |>
+text("species", cex=0.7, col="blue")
+ordilabel(myOrd, dis="sites", cex=0.7, font=3, fill="hotpink", col="blue")
+ordilabel(myOrd, dis="sp", font=1.2, priority=colSums(mat))
+
+```
+
+```{r}
+pca1 <- stats::prcomp(mat)
+ggord(pca1, obslab=T, labcol = "blue", veccol = "grey",
+      vec_ext=1.2,
+      size=3,
+      txt=3,
+      exp = c(0.1, 0.1))
+
+ggsave("pca1.jpg")
+```
