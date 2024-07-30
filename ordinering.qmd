@@ -13,6 +13,8 @@ library(tidyverse)
 library(googlesheets4)
 library(vegan)
 library(ggord)
+library(ggtext)
+library(ggrepel)
 ```
 
 ```{r getData}
@@ -21,37 +23,19 @@ gs4_user()
 dat <- googlesheets4::read_sheet("https://docs.google.com/spreadsheets/d/1_xtwyLeKByIObjxrZP2ApkwQB9_oGlLle3SwSFjL_cA/edit?gid=0#gid=0")
 ```
 
-#### Test run
+#### 
 
-```{r exampleData}
-data(dune)
-data(dune.env)
-```
-
-```{r exampleModel}
-ord <- metaMDS(dune, trace = FALSE)
-ord
-```
-
-```{r examplePlot}
-plot(ord, type = "n") |>
-#points("sites", cex = 0.8, pch=21, col="red", bg="yellow")
-text("species", cex=0.7, col="blue")
-orditorp(ord, display = "sites")
-```
-
-#### Real data
-
-```{r myModel}
+```{r prepData}
 mat2 <- dat |>
   column_to_rownames("hovedtype_NiN2_kode") |>
+  filter(arcticAlpine != "yes") |>
   mutate(
     distributionalRange = case_match(
       distributionalRange,
       "Broad" ~ 1,
       .default = 0
       ),
-    patchiness = case_match(
+    dispersed = case_match(
       patchiness,
       "Dispersed" ~ 1,
       .default = 0),
@@ -67,10 +51,6 @@ mat2 <- dat |>
       spatiallyDynamic,
       "yes" ~ 1,
       .default = 0),
-    arcticAlpine = case_match(
-      arcticAlpine,
-      "yes" ~ 1,
-      .default = 0),
     coastal = case_match(
       coastal,
       "yes" ~ 1,
@@ -83,16 +63,14 @@ mat2 <- dat |>
     ) |>
   select(flater, 
          distributionalRange,
-         patchiness,
+         dispersed,
          localDensity,
          successionalStage,
          spatiallyDynamic,
-         arcticAlpine,
          coastal,
          marginal)
 mat <- mat2 |>
   select(-marginal)
-myOrd <- metaMDS(mat, trace = FALSE)
 
 
 ```
@@ -100,6 +78,9 @@ myOrd <- metaMDS(mat, trace = FALSE)
 ```{r}
 #| fig-width: 10
 #| fig-height: 10
+#| eval: false
+
+myOrd <- metaMDS(mat, trace = FALSE)
 plot(myOrd, type = "n") |>
 #points("sites", cex = 0.8, pch=21, col="red", bg="yellow") |>
 text("species", cex=0.7, col="blue")
@@ -122,7 +103,10 @@ ggsave("pca1.jpg")
 Samme ordinering, bare uten de marginale typene (for å få mindre overlapp mellom punktene)
 
 ```{r}
-pca2 <- stats::prcomp(mat2 |> filter(marginal != "1"))
+mat2 <- mat2 |> 
+  filter(marginal != 1) |>
+  select(-marginal)
+pca2 <- stats::prcomp(mat2)
 ggord(pca2, obslab=T, labcol = "blue", veccol = "grey",
       vec_ext=1.2,
       size=3,
@@ -130,4 +114,20 @@ ggord(pca2, obslab=T, labcol = "blue", veccol = "grey",
       exp = c(0.1, 0.1))
 
 ggsave("pca2_margnalRemoved.jpg")
+```
+
+Lag en stilistisk figur basert på rank order
+
+```{r}
+pca2[["x"]] |>
+  as.data.frame() |>
+  select(PC1, PC2) |>
+  mutate(PC1x = row_number(PC1),
+         PC2x = row_number(PC2)) |>
+  rownames_to_column(var = "name") |>
+  ggplot(aes(PC1x, PC2x, label = name))+
+  geom_point(color = "red")+
+  geom_label_repel()
+  
+ggsave("pca-labels.jpg")
 ```
