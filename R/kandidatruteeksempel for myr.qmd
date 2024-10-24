@@ -1,0 +1,45 @@
+---
+title: "Kandidatrute-eksempel for myr"
+format: html
+editor: visual
+---
+
+```{r setup}
+#| message: false
+#| 
+
+library(tidyverse)
+library(sf)
+```
+
+Read SSB 550x500m grid dataset
+
+```{r readBig}
+#| eval: false
+grid <- sf::read_sf("../data/SSB0500M_L/ruter500m_Norge.shp",
+                    quiet = T)
+```
+
+Sample 100 random cells to make it easier to read data
+
+```{r slice}
+#| eval: false
+grid |>
+  slice_sample(n = 100) |>
+  saveRDS("../data/SSB500_sample.rds")
+```
+
+Read back inn
+
+```{r import}
+grid_sample <- readRDS("../data/SSB500_sample.rds")
+```
+
+```{r plot}
+
+grid_sample |>
+  slice(1) |>
+  ggplot() +
+  geom_sf()
+
+```
