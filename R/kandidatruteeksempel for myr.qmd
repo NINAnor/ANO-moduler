@@ -10,6 +10,8 @@ editor: visual
 
 library(tidyverse)
 library(sf)
+library(gridExtra)
+
 ```
 
 Read SSB 550x500m grid dataset
@@ -22,6 +24,104 @@ Read SSB 550x500m grid dataset
 grid <- sf::read_sf("/data/P-Prosjekter2/412421_okologisk_tilstand_2024/Data/SSB0500M_L/ruter500m_Norge.shp",
                     quiet = T)
 
+# subset vestfold
+grid_vf <- grid |>
+  filter(Fylk2016 == "07")
+
+# read AR5
+ar5_vf <- read_sf("/data/R/GeoSpatialData/Topography/Norway_FKB/Original/Basisdata_39_Vestfold_25832_FKB-AR5_FGDB.gdb") |>
+  st_transform(32633) |>
+  mutate(Arealtype = case_match(
+    arealtype,
+    "60" ~ "Myr",
+    "12" ~ "Samferdsel",
+    "21" ~ "Fulldyrka mark",
+    "23" ~ "Innmarksbeite",
+    "30" ~ "Barskog",
+    "50" ~ "Åpen mark",
+    "81" ~ "Ferskvann",
+    .default = arealtype
+  ))
+
+# Keep just the mire polygons
+ar5_vf_myr <- ar5_vf |>
+  filter(Arealtype == "Myr") |>
+  mutate(area = st_area(SHAPE)) |>
+  sf::st_make_valid()
+
+# intercept grid and mire
+grid_ar5 <- grid_vf |>
+  st_intersection(ar5_vf_myr)
+
+# get sum mire area per grid cell
+stats <- grid_ar5 |>
+  as_tibble() |>
+  group_by(SSBid) |>
+  summarise(myrareal = sum(area))
+
+#summary(stats$myrareal)
+
+# add total mire to grid cell geometry
+grid_vf_stat <- grid_vf |>
+  left_join(stats)
+
+# keep only grid cells with mire in them
+grid_vf_myr <- grid_vf_stat |>
+  mutate(myrareal = units::drop_units(myrareal)) |>
+  filter(myrareal >0)
+
+# get lenght of dataset
+ln <- nrow(grid_vf_myr)
+
+# Select three example grid cells
+three <- grid_vf_myr |>
+  arrange(myrareal) |>
+  slice(1, round(ln/2), ln ) |>
+  pull(SSBid)
+
+# filter mire polygons based on the three exmaple grid celles
+three_geom <- grid_ar5 |>
+  filter(SSBid %in% three)
+
+save(grid_vf_myr, three, three_geom, file = "../data/examplesVF.RData")
+```
+
+```{r readCache}
+load("../data/examplesVF.RData")
+
+```
+
+```{r plot}
+
+# Plot and combine
+pA <- grid_vf_myr |>
+  filter(SSBid == three[1]) |>
+  ggplot() +
+  geom_sf()+
+  geom_sf(data = three_geom |> filter(SSBid == three[1]),
+          aes(fill = Arealtype)) +
+  coord_sf(datum = st_crs(32633))+
+  guides(fill = "none")
+
+pB <- grid_vf_myr |>
+  filter(SSBid == three[2]) |>
+  ggplot() +
+  geom_sf()+
+  geom_sf(data = three_geom |> filter(SSBid == three[2]),
+          aes(fill = Arealtype))+
+  coord_sf(datum = st_crs(32633))+
+  guides(fill = "none")
+
+pC <- grid_vf_myr |>
+  filter(SSBid == three[3]) |>
+  ggplot() +
+  geom_sf()+
+  geom_sf(data = three_geom |> filter(SSBid == three[3]),
+          aes(fill = Arealtype))+
+  coord_sf(datum = st_crs(32633))+
+  guides(fill = "none")
+
+grid.arrange(pB,pC, nrow = 1)
 ```
 
 Sample 100 random cells to make it easier to read data
@@ -31,7 +131,7 @@ Sample 100 random cells to make it easier to read data
 grid |>
   # Filter for Vestfold
   filter(Fylk2016 == "07") |>
-  slice_sample(n = 100) |>
+  #slice_sample(n = 100) |>
   saveRDS("../data/SSB500_sample.rds")
 ```
 
@@ -42,11 +142,6 @@ grid_sample <- readRDS("../data/SSB500_sample.rds")
 ```
 
 Fylk2016 nr 16 is Sør Trøndelag. 07 is Vestfold.
-
-```{r }
-
-
-```
 
 Read AR5 for Vestfold
 
@@ -66,6 +161,7 @@ ar5_vf <- read_sf("/data/R/GeoSpatialData/Topography/Norway_FKB/Original/Basisda
     .default = arealtype
     
   ))
+
 
 ```
 
