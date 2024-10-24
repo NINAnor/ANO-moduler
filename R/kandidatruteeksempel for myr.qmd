@@ -124,61 +124,64 @@ pC <- grid_vf_myr |>
 grid.arrange(pB,pC, nrow = 1)
 ```
 
-Sample 100 random cells to make it easier to read data
+## Adding points
 
-```{r slice}
-#| eval: false
-grid |>
-  # Filter for Vestfold
-  filter(Fylk2016 == "07") |>
-  #slice_sample(n = 100) |>
-  saveRDS("../data/SSB500_sample.rds")
-```
-
-Read back inn
-
-```{r import}
-grid_sample <- readRDS("../data/SSB500_sample.rds")
-```
-
-Fylk2016 nr 16 is Sør Trøndelag. 07 is Vestfold.
-
-Read AR5 for Vestfold
+Whe can add sampling points in q few different ways. Either complete systematically spread across the grid cell, after which we can filter out those who don't land in mires. Or we can stratify and force the same number of points into mire polygons. Or we can spread the points systematically, but reather densly, across the grid cell, and select randomly *n* of those that fall inside the mire polygons. This last option has the advantage that we can control the minimum spacing between points. But the approach is less suited for very samll occurences that fall between even the dense sample of points.
 
 ```{r}
-#| eval: false
-ar5_vf <- read_sf("/data/R/GeoSpatialData/Topography/Norway_FKB/Original/Basisdata_39_Vestfold_25832_FKB-AR5_FGDB.gdb") |>
-  st_transform(32633) |>
-  mutate(Arealtype = case_match(
-    arealtype,
-    "60" ~ "Myr",
-    "12" ~ "Samferdsel",
-    "21" ~ "Fulldyrka mark",
-    "23" ~ "Innmarksbeite",
-    "30" ~ "Barskog",
-    "50" ~ "Åpen mark",
-    "81" ~ "Ferskvann",
-    .default = arealtype
-    
-  ))
+# systematically spread, 36 points
+pointsB <- grid_vf_myr |>
+  filter(SSBid == three[2]) |>
+  st_sample(size = 46,
+            type = "hexagonal",
+            exact = T)
 
+pointsC <- grid_vf_myr |>
+  filter(SSBid == three[3]) |>
+  st_sample(size = 46,
+            type = "hexagonal",
+            exact = T)
 
+pB_2 <- pB + geom_sf(data = pointsB)
+pC_2 <- pC + geom_sf(data = pointsC)
+grid.arrange(pB_2,pC_2, nrow = 1)
 ```
 
-Intersect ar5 and ssb and get cells with some mire in them
+Don't know how to get these centred inthe grid cell, but that's not so important yet.
 
-```{r plot}
-grid_sample1 <- grid_sample |>
-  filter(Fylk2016 == "07") |>
-  slice(35)
+Now I select max 3 point per grid cell and that fall inside a polygon.
 
-ar5_sample1 <- ar5_vf |>
-  st_intersection(grid_sample1)
+```{r}
 
-ar5_sample1 |>
-  ggplot() +
-  geom_sf() +
-  geom_sf(data = ar5_sample1,
-          aes(fill = Arealtype))
+smallMire <- three_geom |> 
+  filter(SSBid == three[2]) 
+bigMire <- three_geom |> 
+  filter(SSBid == three[3]) 
 
+
+pointsBi <- st_as_sf(pointsB) |>
+  st_filter(smallMire)
+
+pointsCi <- st_as_sf(pointsC) |>
+  st_filter(bigMire) |>
+  slice_sample(n = 3)
+
+pB_2 <- pB + geom_sf(
+  data = pointsB,
+  pch = 3
+) +
+  geom_sf(
+    data = pointsBi,
+    pch = 1
+  )
+
+pC_2 <- pC + geom_sf(
+  data = pointsC,
+  pch = 3
+) +
+  geom_sf(
+    data = pointsCi,
+    pch = 1
+  )
+grid.arrange(pB_2,pC_2, nrow = 1)
 ```
