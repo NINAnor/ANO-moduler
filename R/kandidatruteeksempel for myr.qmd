@@ -20,16 +20,20 @@ Read SSB 550x500m grid dataset
 #| eval: false
 #grid <- sf::read_sf("../data/SSB0500M_L/ruter500m_Norge.shp",
 #                    quiet = T)
-
 grid <- sf::read_sf("/data/P-Prosjekter2/412421_okologisk_tilstand_2024/Data/SSB0500M_L/ruter500m_Norge.shp",
-                    quiet = T)
+  quiet = T
+)
 
 # subset vestfold
-grid_vf <- grid |>
-  filter(Fylk2016 == "07")
+#grid_vf <- grid |>
+#  filter(Fylk2016 == "07")
+
+# subset sør trondelag
+grid_tr <- grid |>
+  filter(Fylk2016 == "16" | Fylk2016 == "17")
 
 # read AR5
-ar5_vf <- read_sf("/data/R/GeoSpatialData/Topography/Norway_FKB/Original/Basisdata_39_Vestfold_25832_FKB-AR5_FGDB.gdb") |>
+ar5_tr <- read_sf("/data/R/GeoSpatialData/Topography/Norway_FKB/Original/FKB-AR5 FGDB-format/Basisdata_50_Trondelag_25832_FKB-AR5_FGDB.gdb") |>
   st_transform(32633) |>
   mutate(Arealtype = case_match(
     arealtype,
@@ -41,49 +45,103 @@ ar5_vf <- read_sf("/data/R/GeoSpatialData/Topography/Norway_FKB/Original/Basisda
     "50" ~ "Åpen mark",
     "81" ~ "Ferskvann",
     .default = arealtype
-  ))
-
-# Keep just the mire polygons
-ar5_vf_myr <- ar5_vf |>
+  )) |>
+  # Keep just the mire polygons
   filter(Arealtype == "Myr") |>
-  mutate(area = st_area(SHAPE)) |>
+  #mutate(area = st_area(SHAPE)) |>
   sf::st_make_valid()
 
 # intercept grid and mire
-grid_ar5 <- grid_vf |>
-  st_intersection(ar5_vf_myr)
+grid_ar5 <- grid_tr |>
+  st_intersection(ar5_tr) |>
+  mutate(area = st_area(geometry))
 
 # get sum mire area per grid cell
 stats <- grid_ar5 |>
   as_tibble() |>
   group_by(SSBid) |>
-  summarise(myrareal = sum(area))
+  summarise(myrareal = sum(area),
+            n = n())
 
-#summary(stats$myrareal)
+# summary(stats$myrareal)
+# summary(stats$n)
 
 # add total mire to grid cell geometry
-grid_vf_stat <- grid_vf |>
+grid_tr <- grid_tr |>
   left_join(stats)
 
 # keep only grid cells with mire in them
-grid_vf_myr <- grid_vf_stat |>
+# In the future we want to include the wetland model to this analysis, not just AR5
+grid_tr <- grid_tr |>
   mutate(myrareal = units::drop_units(myrareal)) |>
-  filter(myrareal >0)
+  filter(myrareal > 0)
+
+# sample 100 grid cells as candidate areas and save them
+#grid_tr |>
+#  slice_sample(n = 100) |>
+#  saveRDS("/data/P-Prosjekter2/412421_okologisk_tilstand_2024/Data/kandidatruter_myr_trondelag.rds")
 
 # get lenght of dataset
-ln <- nrow(grid_vf_myr)
+ln <- nrow(grid_tr)
 
-# Select three example grid cells
-three <- grid_vf_myr |>
+# Select three example grid cells with varying mire area
+three <- grid_tr |>
   arrange(myrareal) |>
-  slice(1, round(ln/2), ln ) |>
+  slice(1000, round(ln / 2), ln-500) |>
   pull(SSBid)
 
-# filter mire polygons based on the three exmaple grid celles
-three_geom <- grid_ar5 |>
-  filter(SSBid %in% three)
+# get one example grid cell with high number of distinct mire polygins
+dense <- grid_tr |>
+  slice_max(n, n = 1) |>
+    pull(SSBid)
 
-save(grid_vf_myr, three, three_geom, file = "../data/examplesVF.RData")
+get <- c(three, dense)
+# filter mire polygons based on the example grid celles
+ex_geom <- grid_ar5 |>
+  filter(SSBid %in% get)
+
+# check that selection is good
+grid_tr |>
+  filter(SSBid == three[1]) |>
+  ggplot() +
+  geom_sf()+
+  geom_sf(data = ex_geom |> filter(SSBid == three[1]),
+          aes(fill = Arealtype)) +
+  coord_sf(datum = st_crs(32633))+
+  guides(fill = "none")
+# ok, probably but almost no mire
+
+grid_tr |>
+  filter(SSBid == three[2]) |>
+  ggplot() +
+  geom_sf()+
+  geom_sf(data = ex_geom |> filter(SSBid == three[2]),
+          aes(fill = Arealtype)) +
+  coord_sf(datum = st_crs(32633))+
+  guides(fill = "none")
+# Some mire
+
+grid_tr |>
+  filter(SSBid == three[3]) |>
+  ggplot() +
+  geom_sf()+
+  geom_sf(data = ex_geom |> filter(SSBid == three[3]),
+          aes(fill = Arealtype)) +
+  coord_sf(datum = st_crs(32633))+
+  guides(fill = "none")
+# A lot of mire
+
+grid_tr |>
+  filter(SSBid == dense) |>
+  ggplot() +
+  geom_sf()+
+  geom_sf(data = ex_geom |> filter(SSBid == dense),
+          aes(fill = Arealtype)) +
+  coord_sf(datum = st_crs(32633))+
+  guides(fill = "none")
+# Many polygins often measn a weird edge error 
+
+save(grid_tr, three, dense, ex_geom, file = "../data/examplesTR.RData")
 ```
 
 ```{r readCache}
