@@ -11,7 +11,7 @@ editor: visual
 library(tidyverse)
 library(sf)
 library(gridExtra)
-
+library(ggspatial)
 ```
 
 Read SSB 550x500m grid dataset
@@ -141,97 +141,226 @@ grid_tr |>
   guides(fill = "none")
 # Many polygins often measn a weird edge error 
 
-save(grid_tr, three, dense, ex_geom, file = "../data/examplesTR.RData")
+# save(three, dense, ex_geom, file = "../data/examplesTR.RData")
+#grid_tr |>
+#  saveRDS("/data/P-Prosjekter2/412421_okologisk_tilstand_2024/Data/grid_tr.rds")
 ```
 
 ```{r readCache}
-load("../data/examplesVF.RData")
-
+load("../data/examplesTR.RData")
+grid_tr <- readRDS("/data/P-Prosjekter2/412421_okologisk_tilstand_2024/Data/grid_tr.rds")
 ```
 
 ```{r plot}
 
 # Plot and combine
-pA <- grid_vf_myr |>
+pA <- grid_tr |>
   filter(SSBid == three[1]) |>
   ggplot() +
   geom_sf()+
-  geom_sf(data = three_geom |> filter(SSBid == three[1]),
+  geom_sf(data = ex_geom |> filter(SSBid == three[1]),
           aes(fill = Arealtype)) +
   coord_sf(datum = st_crs(32633))+
   guides(fill = "none")
 
-pB <- grid_vf_myr |>
+pB <- grid_tr |>
   filter(SSBid == three[2]) |>
   ggplot() +
   geom_sf()+
-  geom_sf(data = three_geom |> filter(SSBid == three[2]),
+  geom_sf(data = ex_geom |> filter(SSBid == three[2]),
           aes(fill = Arealtype))+
   coord_sf(datum = st_crs(32633))+
   guides(fill = "none")
 
-pC <- grid_vf_myr |>
+
+pC <- grid_tr |>
   filter(SSBid == three[3]) |>
   ggplot() +
   geom_sf()+
-  geom_sf(data = three_geom |> filter(SSBid == three[3]),
+  geom_sf(data = ex_geom |> filter(SSBid == three[3]),
           aes(fill = Arealtype))+
   coord_sf(datum = st_crs(32633))+
   guides(fill = "none")
 
-grid.arrange(pB,pC, nrow = 1)
+pD <- grid_tr |>
+  filter(SSBid == dense) |>
+  ggplot() +
+  geom_sf()+
+  geom_sf(data = ex_geom |> filter(SSBid == dense),
+          aes(fill = Arealtype))+
+  coord_sf(datum = st_crs(32633))+
+  guides(fill = "none")
+
+grid.arrange(pB,pC, pD, nrow = 1)
 ```
 
 ## Adding points
 
-Whe can add sampling points in q few different ways. Either complete systematically spread across the grid cell, after which we can filter out those who don't land in mires. Or we can stratify and force the same number of points into mire polygons. Or we can spread the points systematically, but reather densly, across the grid cell, and select randomly *n* of those that fall inside the mire polygons. This last option has the advantage that we can control the minimum spacing between points. But the approach is less suited for very samll occurences that fall between even the dense sample of points.
+We can add sampling points in a few different ways. Either complete systematically spread across the grid cell, after which we can filter out those who don't land in mires. Or we can stratify and force the same number of points into mire polygons. Or we can spread the points systematically, but reather densly, across the grid cell, and select randomly *n* of those that fall inside the mire polygons. This last option has the advantage that we can easily control the minimum spacing between points. But the approach is less suited for very small occurrences that fall between even the dense sample of points.
+
+I tried this using st_sample below, but I cant seem to to fix and centre the points, and they shift arond a bit with each iteration.
 
 ```{r}
 # systematically spread, 36 points
-pointsB <- grid_vf_myr |>
+pointsB <- grid_tr |>
   filter(SSBid == three[2]) |>
   st_sample(size = 46,
             type = "hexagonal",
             exact = T)
 
-pointsC <- grid_vf_myr |>
+pointsC <- grid_tr |>
   filter(SSBid == three[3]) |>
+  st_sample(size = 46,
+            type = "hexagonal",
+            exact = T)
+
+pointsD <- grid_tr |>
+  filter(SSBid == dense) |>
   st_sample(size = 46,
             type = "hexagonal",
             exact = T)
 
 pB_2 <- pB + geom_sf(data = pointsB)
 pC_2 <- pC + geom_sf(data = pointsC)
-grid.arrange(pB_2,pC_2, nrow = 1)
+pD_2 <- pD + geom_sf(data = pointsD)
+grid.arrange(pB_2,pC_2,pD_2, nrow = 1)
 ```
 
-Don't know how to get these centred inthe grid cell, but that's not so important yet.
+Instead I will use st_grid.
 
-Now I select max 3 point per grid cell and that fall inside a polygon.
+```{r}
+pointsB <- grid_tr |>
+  filter(SSBid == three[2]) |>
+  st_make_grid(n = c(6,6)) |>
+  st_as_sf() |>
+  add_column(label = seq(1,36,1))
+
+
+```
+
+Then we get the centroids.
+
+The order of prioritisation (oop):
+
+```{r}
+id <- c(1,3,5,
+         13, 15, 17,
+         25, 27, 29,
+         8, 10, 12,
+         20, 22, 24,
+         32, 34, 36,
+         2, 4, 6,
+         14, 16, 18,
+         26, 28, 30,
+         7, 9, 11,
+         19, 21, 23,
+         31, 33, 35)
+
+oop_link <- tibble(id, oop = seq(1,36,1))
+```
+
+```{r}
+center <- st_coordinates(st_centroid(st_geometry(pointsB)))
+
+(numbered_grid <-  pointsB |>
+  left_join(oop_link, by = join_by(label == id)) |>
+  ggplot()+
+  geom_sf()+
+  geom_text(aes(x = center[,1], y = center[,2]-20, label = paste("ID", label))) +
+  geom_text(aes(x = center[,1], y = center[,2]+20, label = oop)) +
+  coord_sf(datum = st_crs(32633))+
+  labs(x = "", y = ""))+
+  theme(axis.text = element_blank())
+
+ggsave("../img/gridID.png")
+```
 
 ```{r}
 
-smallMire <- three_geom |> 
+pointsB2 <- pointsB |>
+  st_centroid()
+
+(pointed_grid <- grid_tr |>
+  filter(SSBid == three[2])   |>
+  ggplot()+
+  geom_sf() +
+  geom_sf(data = pointsB2)+
+  coord_sf(datum = st_crs(32633))+
+  labs(x = "", y = ""))
+
+
+```
+
+This layout is similar to ANO, but there only every second points is included.
+
+```{r}
+pointsC <- grid_tr |>
+  filter(SSBid == three[3]) |>
+  st_make_grid(n = c(6,6)) |>
+  st_as_sf() |>
+  add_column(label = seq(1,36,1)) |>
+  st_centroid()
+pointsD <- grid_tr |>
+  filter(SSBid == dense) |>
+  st_make_grid(n = c(6,6)) |>
+  st_as_sf() |>
+  add_column(label = seq(1,36,1)) |>
+  st_centroid()
+
+pBp <- pB + geom_sf(data = pointsB2)
+pCp <- pC + geom_sf(data = pointsC)
+pDp <- pD + geom_sf(data = pointsD)
+
+
+grid.arrange(pBp,pCp,pDp, nrow = 1)
+```
+
+Now I select max 3 point per grid cell and that fall inside a selected nature type, based on the oop. Lets assume all the mire is of a selected type i this case.
+
+```{r}
+# adding oop
+pointsB2 <- pointsB2 |>
+  left_join(oop_link, by = join_by(label == id))
+pointsC <- pointsC |>
+  left_join(oop_link, by = join_by(label == id))
+pointsD <- pointsD |>
+  left_join(oop_link, by = join_by(label == id))
+
+```
+
+```{r}
+
+smallMire <- ex_geom |> 
   filter(SSBid == three[2]) 
-bigMire <- three_geom |> 
+bigMire <- ex_geom |> 
   filter(SSBid == three[3]) 
+denseMire <- ex_geom |> 
+  filter(SSBid == dense) 
 
-
-pointsBi <- st_as_sf(pointsB) |>
-  st_filter(smallMire)
+pointsBi <- st_as_sf(pointsB2) |>
+  st_filter(smallMire) |>
+  arrange(oop) |>
+  slice_head(n = 3)
 
 pointsCi <- st_as_sf(pointsC) |>
-  st_filter(bigMire) |>
-  slice_sample(n = 3)
+  st_filter(bigMire)|>
+  arrange(oop) |>
+  slice_head(n = 3)
 
-pB_2 <- pB + geom_sf(
-  data = pointsB,
-  pch = 3
-) +
+pointsDi <- st_as_sf(pointsD) |>
+  st_filter(denseMire) |>
+  arrange(oop) |>
+  slice_head(n = 3)
+
+pB_2 <- pB + 
+  geom_sf(data = pointsB2, pch = 3) +
   geom_sf(
     data = pointsBi,
-    pch = 1
-  )
+    pch = 1,
+    size = 3
+  )+
+  coord_sf(datum = st_crs(32633))+
+  theme(axis.text.x = element_text(angle = 90))
 
 pC_2 <- pC + geom_sf(
   data = pointsC,
@@ -239,7 +368,45 @@ pC_2 <- pC + geom_sf(
 ) +
   geom_sf(
     data = pointsCi,
-    pch = 1
+    pch = 1,
+    size = 3
+  )+
+  coord_sf(datum = st_crs(32633))+
+  theme(axis.text.x = element_text(angle = 90))
+
+pD_2 <- pD + geom_sf(
+  data = pointsD,
+  pch = 3
+) +
+  geom_sf(
+    data = pointsDi,
+    pch = 1,
+    size = 3
+  )+
+  coord_sf(datum = st_crs(32633))+
+  theme(axis.text.x = element_text(angle = 90)) +
+
+  ggspatial::annotation_scale(
+    pad_x = unit(.5, "cm"),
+    pad_y = unit(0.7, "cm"),
+    location = "tr",
+    bar_cols = c("grey60", "white"),
+    text_family = "ArcherPro Book"
+  ) +
+  ggspatial::annotation_north_arrow(
+    location = "tr", which_north = "grid",
+    height = unit(1.2, "cm"),
+    width = unit(1, "cm"),
+    pad_x = unit(0.2, "in"), pad_y = unit(0.5, "in"),
+    style = ggspatial::north_arrow_orienteering()
   )
-grid.arrange(pB_2,pC_2, nrow = 1)
+
+(ggout <- grid.arrange(pB_2,pC_2,pD_2, nrow = 1))
+ggsave("../img/mire_points_examples.png", ggout)
+```
+
+What is the distance between the points?
+
+```{r}
+max(st_distance(st_centroid(pointsB[1:2,])))
 ```
